@@ -33,13 +33,10 @@ jobs:
 
       - name: Install & build
         working-directory: frontend
-        env:
-          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
-          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
-          VITE_BASE_PATH: ${{ vars.VITE_BASE_PATH || secrets.VITE_BASE_PATH || '/' }}
         run: |
           npm ci
           npm run build
+          # .env.production 已包含公开的 Supabase URL / anon key / base path
 
       - name: Setup Pages
         uses: actions/configure-pages@v5

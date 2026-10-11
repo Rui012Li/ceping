@@ -1,0 +1,7 @@
+project_id = "ceping"
+
+[api]
+enabled = true
+
+[functions.api]
+verify_jwt = false

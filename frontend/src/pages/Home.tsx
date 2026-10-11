@@ -18,7 +18,12 @@ export default function Home() {
       sessionStorage.setItem('quiz_remaining', String(data.remaining))
       navigate('/quiz')
     } catch (err) {
-      setError(err instanceof Error ? err.message : '验证失败')
+      const msg = err instanceof Error ? err.message : '验证失败'
+      if (msg.includes('Failed to fetch') || msg.includes('NetworkError') || msg.includes('fetch')) {
+        setError('网络无法连接数据库（Failed to fetch）。国内网络常拦截 supabase.co，请稍后重试或联系管理员配置代理。')
+      } else {
+        setError(msg)
+      }
     } finally {
       setLoading(false)
     }

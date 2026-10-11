@@ -1,83 +1,77 @@
 import type { ResultPayload } from './types'
+import { scoreAnswers } from './lib/scoring'
+import { rpcErrorMessage, supabase, supabaseConfigured } from './lib/supabase'
 
-const SUPABASE_URL = (import.meta.env.VITE_SUPABASE_URL || '').replace(/\/$/, '')
-const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || ''
-
-function apiEndpoint() {
-  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
-    throw new Error('未配置 Supabase：请设置 VITE_SUPABASE_URL 与 VITE_SUPABASE_ANON_KEY')
-  }
-  return `${SUPABASE_URL}/functions/v1/api`
+function requireClient() {
+  if (!supabase) throw new Error('未配置 Supabase：请设置 VITE_SUPABASE_URL 与 VITE_SUPABASE_ANON_KEY')
+  return supabase
 }
 
-async function callApi<T>(
-  action: string,
-  body: Record<string, unknown> = {},
-  options?: { adminToken?: string; raw?: boolean },
-): Promise<T> {
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    apikey: SUPABASE_ANON_KEY,
-    Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
-  }
-  if (options?.adminToken) headers['x-admin-token'] = options.adminToken
+export function isSupabaseConfigured() {
+  return supabaseConfigured
+}
 
-  const res = await fetch(apiEndpoint(), {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({ action, ...body }),
+export async function startTest(password: string) {
+  const client = requireClient()
+  const { data, error } = await client.rpc('consume_password', { p_code: password })
+  if (error) throw new Error(rpcErrorMessage(error))
+  if (!data?.ok) throw new Error(data?.message || '验证失败')
+  return data as { ok: boolean; token: string; remaining: number; message: string }
+}
+
+export async function submitAnswers(token: string, answers: Record<string, string | number>) {
+  const client = requireClient()
+  const scored = scoreAnswers(answers)
+  const { data, error } = await client.rpc('submit_result', {
+    p_token: token,
+    p_payload: scored,
   })
-
-  if (options?.raw) {
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}))
-      throw new Error(data.detail || '请求失败')
-    }
-    return (await res.text()) as T
-  }
-
-  const data = await res.json().catch(() => ({}))
-  if (!res.ok) throw new Error(data.detail || data.message || '请求失败')
-  return data as T
+  if (error) throw new Error(rpcErrorMessage(error))
+  return data as ResultPayload
 }
 
-export function startTest(password: string) {
-  return callApi<{ ok: boolean; token: string; remaining: number; message: string }>('start', {
-    password,
-  })
+export async function fetchResult(id: string) {
+  const client = requireClient()
+  const { data, error } = await client.rpc('get_result', { p_id: id })
+  if (error) throw new Error(rpcErrorMessage(error))
+  return data as ResultPayload
 }
 
-export function submitAnswers(token: string, answers: Record<string, string | number>) {
-  return callApi<ResultPayload>('submit', { token, answers })
+export async function adminLogin(password: string) {
+  const client = requireClient()
+  const { data, error } = await client.rpc('admin_login', { p_password: password })
+  if (error) throw new Error(rpcErrorMessage(error))
+  return data as { ok: boolean; token: string }
 }
 
-export function fetchResult(id: string) {
-  return callApi<ResultPayload>('result', { id })
+export async function adminLogout(adminToken: string) {
+  const client = requireClient()
+  const { error } = await client.rpc('admin_logout', { p_token: adminToken })
+  if (error) throw new Error(rpcErrorMessage(error))
+  return { ok: true }
 }
 
-export function adminLogin(password: string) {
-  return callApi<{ ok: boolean; token: string }>('admin_login', { password })
-}
-
-export function adminLogout(adminToken: string) {
-  return callApi<{ ok: boolean }>('admin_logout', {}, { adminToken })
-}
-
-export function adminStats(adminToken: string) {
-  return callApi<{
+export async function adminStats(adminToken: string) {
+  const client = requireClient()
+  const { data, error } = await client.rpc('admin_stats', { p_token: adminToken })
+  if (error) throw new Error(rpcErrorMessage(error))
+  return data as {
     total: number
     unused: number
     partial: number
     exhausted: number
     ready_to_ship: number
-  }>('admin_stats', {}, { adminToken })
+  }
 }
 
-export function adminBatches(adminToken: string) {
-  return callApi<{ items: Array<Record<string, unknown>> }>('admin_batches', {}, { adminToken })
+export async function adminBatches(adminToken: string) {
+  const client = requireClient()
+  const { data, error } = await client.rpc('admin_batches', { p_token: adminToken })
+  if (error) throw new Error(rpcErrorMessage(error))
+  return data as { items: Array<Record<string, unknown>> }
 }
 
-export function adminList(
+export async function adminList(
   adminToken: string,
   params: {
     status?: string
@@ -88,12 +82,21 @@ export function adminList(
     offset?: number
   },
 ) {
-  return callApi<{ total: number; items: Array<Record<string, unknown>> }>('admin_list', params, {
-    adminToken,
+  const client = requireClient()
+  const { data, error } = await client.rpc('admin_list_passwords', {
+    p_token: adminToken,
+    p_status: params.status ?? null,
+    p_batch_id: params.batch_id ?? null,
+    p_exported: params.exported ?? null,
+    p_q: params.q ?? null,
+    p_limit: params.limit ?? 200,
+    p_offset: params.offset ?? 0,
   })
+  if (error) throw new Error(rpcErrorMessage(error))
+  return data as { total: number; items: Array<Record<string, unknown>> }
 }
 
-export function adminGenerate(
+export async function adminGenerate(
   adminToken: string,
   body: {
     count: number
@@ -103,12 +106,20 @@ export function adminGenerate(
     code_length: number
   },
 ) {
-  return callApi<{ batch_id: string; count: number; codes: string[] }>('admin_generate', body, {
-    adminToken,
+  const client = requireClient()
+  const { data, error } = await client.rpc('admin_generate', {
+    p_token: adminToken,
+    p_count: body.count,
+    p_max_uses: body.max_uses,
+    p_prefix: body.prefix,
+    p_note: body.note,
+    p_code_length: body.code_length,
   })
+  if (error) throw new Error(rpcErrorMessage(error))
+  return data as { batch_id: string; count: number; codes: string[] }
 }
 
-export function adminExport(
+export async function adminExport(
   adminToken: string,
   body: {
     status: string
@@ -118,9 +129,20 @@ export function adminExport(
     format: 'txt' | 'csv' | 'json'
   },
 ) {
-  return callApi<string>('admin_export', body, { adminToken, raw: body.format !== 'json' })
-}
-
-export function isSupabaseConfigured() {
-  return Boolean(SUPABASE_URL && SUPABASE_ANON_KEY)
+  const client = requireClient()
+  const { data, error } = await client.rpc('admin_export', {
+    p_token: adminToken,
+    p_status: body.status,
+    p_batch_id: body.batch_id,
+    p_only_unexported: body.only_unexported,
+    p_mark_exported: body.mark_exported,
+  })
+  if (error) throw new Error(rpcErrorMessage(error))
+  const payload = data as { count: number; codes: string[]; batch_id: string }
+  const codes = payload.codes || []
+  if (body.format === 'json') return JSON.stringify(payload)
+  if (body.format === 'csv') {
+    return ['code,batch_id', ...codes.map((c) => `${c},${payload.batch_id || ''}`)].join('\n') + '\n'
+  }
+  return codes.join('\n') + (codes.length ? '\n' : '')
 }

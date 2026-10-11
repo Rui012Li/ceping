@@ -12,3 +12,6 @@ frontend/.env.local
 .vite/
 .supabase/
 supabase/.temp/
+/node_modules/
+/package.json
+/package-lock.json

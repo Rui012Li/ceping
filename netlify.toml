@@ -1,5 +1,10 @@
+# 仅部署 Supabase 代理（前端仍用 GitHub Pages）
+[build]
+  publish = "netlify/public"
+  command = "mkdir -p netlify/public && printf 'ceping supabase proxy\\n' > netlify/public/index.html"
+  functions = "netlify/functions"
+
 [functions]
-  directory = "netlify/functions"
   node_bundler = "esbuild"
 
 [[redirects]]

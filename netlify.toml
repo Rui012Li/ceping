@@ -1,0 +1,9 @@
+[functions]
+  directory = "netlify/functions"
+  node_bundler = "esbuild"
+
+[[redirects]]
+  from = "/sb/*"
+  to = "/.netlify/functions/supabase/:splat"
+  status = 200
+  force = true
